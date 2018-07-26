@@ -11,9 +11,21 @@ var totalNumDataPoints = 0;
 var graph;
 var isPlaying = false;
 var samplingRate = 500;
+var cumSumGraph;
+var derCumSumGraph;
+var clampCount;
+var sumArray = [];
+var sumVariable = 0;
+var slopeArray = [];
+var slope = 0;
+var zeroTotal = 0;
+var oneTotal = 0;
+var ptFiveTotal = 0;
+var negOneTotal = 0;
+var negPtFiveTotal = 0;
 
 function setup(playerDuration) {
-	//console.log("Anything");
+    //console.log("Anything");
     // create joystick
     //stick = $("#slider-vertical");
     //pivot = $("#pivot");
@@ -35,15 +47,10 @@ function setup(playerDuration) {
     data[totalNumDataPoints] = 0;
 
     // create graph to plot what's in data.
-    graph = new Highcharts.Chart({
-        "chart": {
-            "renderTo": 'graph'
-        },
-
+    graph = new Highcharts.Chart('graph-container', {
         title: {
-        text: 'Sense Making Curve'
+            text: 'Sense Making Curve'
         },
-
         "yAxis": {
             "min": -1,
             "max": 1
@@ -57,6 +64,73 @@ function setup(playerDuration) {
         }]
     });
 
+    for (var i = 0; i <= totalNumDataPoints; i++) {
+        sumArray[i] = null;
+    }
+    sumArray[totalNumDataPoints] = 0;
+
+    // create graph to plot what's in data.
+    cumSumGraph = new Highcharts.chart('cum-sum-container', {
+        chart: {
+            type: "spline",
+            zoomType: 'x'
+        },
+        title: {
+            text: 'IxD Cumulative Sum'
+        },
+        "yAxis": {
+            "min": -100,
+            "max": 300
+        },
+        scrollbar: {
+            enabled: true,
+        },
+        "series": [{
+            "data": sumArray,
+            "type": "spline",
+            "connectNulls": false,
+            "connectEnds": true,
+            "turboThreshold": totalNumDataPoints + 1,
+            cropThreshold: 9999
+        }]
+    });
+
+    for (var i = 0; i <= totalNumDataPoints; i++) {
+        slopeArray[i] = null;
+    }
+    slopeArray[totalNumDataPoints] = 0;
+
+    derCumSumGraph = new Highcharts.chart('der-cum-sum-container', {
+        chart: {
+            zoomType: 'x'
+        },
+        title: {
+            text: 'Derivative of IxD Cumulative Sum'
+        },
+        "yAxis": {
+            "min": -50,
+            "max": 50,
+        },
+        scrollbar: {
+            enabled: true,
+        },
+        "series": [{
+            "data": slopeArray,
+            "type": "spline",
+            "connectNulls": false,
+            "connectEnds": true,
+            "turboThreshold": totalNumDataPoints + 1
+        }]
+
+    });
+
+    // //mousedown - left mouse button is pressed down over the selected element
+    // $('.graph-container').on('mousedown', function(event) {
+    //     console.log("Clickdown chart");
+    //     $(this).toggleClass('modal');
+    //     graph.reflow();
+    // });
+
     // set up download button
     $("#download").on("click", download);
     samplingRate = localStorage["samplingRate"];
@@ -66,17 +140,17 @@ function setup(playerDuration) {
     // rate of data collection coincides with the video's framerate.
     //setSamplingRate();
     setInterval(record, samplingRate);
-    slider();
+    slider();    
 }
 
 var recordCode = true;
 console.log("RecordCode:" + recordCode);
 function codeRecorder(){
-	console.log("in the codeRecorder function");
-	if (recordCode == true) {
-		recordCode = false;
-	}
-	else recordCode = true;
+    console.log("in the codeRecorder function");
+    if (recordCode == true) {
+        recordCode = false;
+    }
+    else recordCode = true;
 }
 
 //sets the slider
@@ -174,20 +248,26 @@ function record() {
 
     //if button is OFF, values are not recorded.
     if(!recordCode) {
-    	return;
+        return;
     }
     
     // only records if video is playing AND button is ON.
-    if (!isPlaying && !recordCode) {
-    	console.log("In isPlaying:" + codeRecorder);
+    console.log("isPlaying: " + isPlaying);
+    console.log("recordCode: " + recordCode);
+    if (!isPlaying /*&& !recordCode*/) {
+        console.log("In isPlaying: " + codeRecorder);
         var startIndex = counter - numDataPoints;
         graph.xAxis[0].setExtremes(startIndex, startIndex + 100, true, false);
+        //cumSumGraph.xAxis[0].setExtremes(startIndex, startIndex + 100, true, false);
+        //derCumSumGraph.xAxis[0].setExtremes(startIndex, startIndex + 100, true, false);
+
         return;
     }
 
     //var x = stick.position().left + stick.width() / 2 - pivot.width() / 2;
     //var y = - stick.position().top - stick.height() / 2 + pivot.height() / 2;
     var y = ycoord;
+    console.log("y: " + y);
 
     if (lastCounter < counter) {
         // clear data all from lastCounter up to counter.
@@ -198,13 +278,65 @@ function record() {
             //this is calculating slope
             //var newY = (i - lastCounter)*(y - previous.y)/numSlots + previous.y;
             graph.series[0].data[i].update(y);
+            console.log("inside lastCounter");
         }
     }
 
     graph.series[0].data[counter].update(y);
+    cumSumGraph.series[0].data[counter].update(sumVariable);
+    derCumSumGraph.series[0].data[counter].update(slope);
+
     // data[counter].y = y;
 
     // counter determines the extremes of the x axis to display.
     var startIndex = counter - numDataPoints;
     graph.xAxis[0].setExtremes(startIndex, startIndex + 100, true, false);
+    cumSumGraph.xAxis[0].setExtremes(startIndex, startIndex + 100, true, false);
+    derCumSumGraph.xAxis[0].setExtremes(startIndex, startIndex + 100, true, false);
+
+    //console.log("data: " + data[i]);
+    sumVariable += y;
+    sumArray[i] = sumVariable;
+    
+/*    console.log("sumArray vals:" + sumArray);
+    console.log("sumVariable: " + sumVariable);*/
+
+    slope = Math.round((sumArray[i - 1] - sumArray[i])/((player.getCurrentTime() - 1) - player.getCurrentTime()));
+    slopeArray[i] = slope;
+
+   /* console.log("slopeArray vals:" + slopeArray);
+    console.log("slope: " + slope);*/
+
+    if (y == 0) {
+        zeroTotal += 1;
+        document.getElementById("zeroTotal").innerHTML = zeroTotal;
+    } else if (y == 1) {
+        oneTotal += 1;
+        document.getElementById("oneTotal").innerHTML = oneTotal;
+    } else if (y == 0.5) {
+        ptFiveTotal += 1;
+        document.getElementById("ptFiveTotal").innerHTML = ptFiveTotal;
+    } else if (y == -1) {
+        negOneTotal += 1;
+        document.getElementById("negOneTotal").innerHTML = negOneTotal;
+    } else if (y == -0.5) {
+        negPtFiveTotal += 1;
+        document.getElementById("negPtFiveTotal").innerHTML = negPtFiveTotal;
+    }
+
+    console.log("zeroTotal = " + zeroTotal);
+    console.log("oneTotal = " + oneTotal);
+    console.log("ptFiveTotal = " + ptFiveTotal);
+    console.log("negOneTotal = " + negOneTotal);
+    console.log("negPtFiveTotal = " + negPtFiveTotal);
+
+}
+
+function graphVisibility(id) {
+    var checkbox = document.getElementById(id);
+    if (checkbox.style.visibility == "visible") {
+        checkbox.style.visibility = "hidden";
+    } else {
+        checkbox.style.visibility = "visible";
+    }
 }
